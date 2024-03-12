@@ -221,7 +221,8 @@ finalModuleEvaluation genTree candidates =
 
                                 else
                                     let
-                                        ( moduleName, importFixes ) =
+                                        moduleName : ModuleName
+                                        moduleName =
                                             let
                                                 rawModuleName : ModuleName
                                                 rawModuleName =
@@ -229,17 +230,10 @@ finalModuleEvaluation genTree candidates =
                                             in
                                             case Dict.get rawModuleName candidates.imports of
                                                 Just (Just alias_) ->
-                                                    ( [ alias_ ], [] )
+                                                    [ alias_ ]
 
-                                                Just Nothing ->
-                                                    ( rawModuleName, [] )
-
-                                                Nothing ->
-                                                    ( rawModuleName
-                                                    , [ Fix.insertAt candidates.importListEnd
-                                                            ("import " ++ String.join "." rawModuleName ++ "\n")
-                                                      ]
-                                                    )
+                                                _ ->
+                                                    rawModuleName
 
                                         fullName : String
                                         fullName =
@@ -254,7 +248,12 @@ finalModuleEvaluation genTree candidates =
                                                             { start = argEndAcc
                                                             , end = argRange.start
                                                             }
-                                                            " ("
+                                                            (if argEndAcc.row /= argRange.start.row then
+                                                                "\n" ++ String.repeat argRange.start.column " " ++ "("
+
+                                                             else
+                                                                " ("
+                                                            )
                                                             :: Fix.insertAt
                                                                 argRange.end
                                                                 ")"
@@ -275,13 +274,13 @@ finalModuleEvaluation genTree candidates =
                                             ]
                                         }
                                         combinedRange
-                                        (Fix.replaceRangeBy combinedRange fullName
-                                            :: argsFixes
-                                            ++ Fix.removeRange
-                                                { start = lastArgEnd
-                                                , end = candidate.listRange.end
-                                                }
-                                            :: importFixes
+                                        ([ Fix.replaceRangeBy combinedRange fullName
+                                         , Fix.removeRange
+                                            { start = lastArgEnd
+                                            , end = candidate.listRange.end
+                                            }
+                                         ]
+                                            ++ argsFixes
                                         )
                                         |> Just
                     )
@@ -546,6 +545,22 @@ expressionVisitor (Node range node) context =
                     _ ->
                         -- If moduleName and valueName are not constants it actually makes sense to use Elm.value
                         ( [], context )
+
+            Expression.Application [ Node applyRange (Expression.FunctionOrValue [ "Elm" ] "apply"), Node valueRange (Expression.RecordAccess (Node _ (Expression.FunctionOrValue ("Gen" :: moduleName) "values_")) (Node _ valueName)), Node listRange (Expression.ListExpr args) ] ->
+                let
+                    candidate : CallCandidate
+                    candidate =
+                        { moduleName = moduleName
+                        , valueName = valueName
+                        , applyRange = applyRange
+                        , valueRange = valueRange
+                        , listRange = listRange
+                        , args = List.map Node.range args
+                        }
+                in
+                ( []
+                , { context | callCandidates = candidate :: context.callCandidates }
+                )
 
             _ ->
                 ( [], context )
