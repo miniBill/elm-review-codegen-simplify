@@ -8,10 +8,10 @@ import Test exposing (Test, describe, test)
 all : Test
 all =
     describe "Codegen.Simplify"
-        [ test "should not report an error when REPLACEME" <|
+        [ test "should not report an error when Elm.value is used with a nonconstant module name" <|
             \() ->
                 """module A exposing (..)
-a = 1
+a = Elm.value { }
 """
                     |> Review.Test.run rule
                     |> Review.Test.expectNoErrors
