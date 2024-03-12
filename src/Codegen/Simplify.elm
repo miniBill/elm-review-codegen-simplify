@@ -149,149 +149,149 @@ finalEvaluation context =
 
 finalModuleEvaluation : Tree -> Candidates -> List (Rule.Error { useErrorForModule : () })
 finalModuleEvaluation genTree candidates =
-    -- TODO: implement callCandidates
-    let
-        valueErrors : List (Rule.Error { useErrorForModule : () })
-        valueErrors =
-            candidates.valueCandidates
-                |> List.map
-                    (\candidate ->
-                        case get genTree candidate.moduleName candidate.valueName of
-                            Nothing ->
-                                Rule.errorForModule candidates.moduleKey
-                                    { message = "Use helpers for more readable and compact code"
-                                    , details = [ "You can use local helpers to avoid directly needing Elm.value" ]
-                                    }
-                                    candidate.range
-
-                            Just _ ->
-                                let
-                                    ( moduleName, importFixes ) =
-                                        let
-                                            rawModuleName : ModuleName
-                                            rawModuleName =
-                                                "Gen" :: candidate.moduleName
-                                        in
-                                        case Dict.get rawModuleName candidates.imports of
-                                            Just (Just alias_) ->
-                                                ( [ alias_ ], [] )
-
-                                            Just Nothing ->
-                                                ( rawModuleName, [] )
-
-                                            Nothing ->
-                                                ( rawModuleName
-                                                , [ Fix.insertAt candidates.importListEnd
-                                                        ("import " ++ String.join "." rawModuleName ++ "\n")
-                                                  ]
-                                                )
-
-                                    fullName : String
-                                    fullName =
-                                        (moduleName ++ [ "values_", candidate.valueName ])
-                                            |> String.join "."
-                                in
-                                Rule.errorForModuleWithFix candidates.moduleKey
-                                    { message = "Use helpers for more readable and compact code"
-                                    , details =
-                                        [ "This usage of Elm.value can be replaced with " ++ fullName
-                                        ]
-                                    }
-                                    candidate.range
-                                    (Fix.replaceRangeBy candidate.range fullName :: importFixes)
-                    )
-
-        callErrors : List (Rule.Error { useErrorForModule : () })
-        callErrors =
-            candidates.callCandidates
-                |> List.filterMap
-                    (\candidate ->
-                        case get genTree candidate.moduleName candidate.valueName of
-                            Nothing ->
-                                Rule.errorForModule candidates.moduleKey
-                                    { message = "Use helpers for more readable and compact code"
-                                    , details = [ "You can use local helpers to avoid directly needing Elm.apply" ]
-                                    }
-                                    (Range.combine [ candidate.applyRange, candidate.valueRange ])
-                                    |> Just
-
-                            Just arity ->
-                                if List.length candidate.args /= arity then
-                                    Nothing
-
-                                else
-                                    let
-                                        moduleName : ModuleName
-                                        moduleName =
-                                            let
-                                                rawModuleName : ModuleName
-                                                rawModuleName =
-                                                    "Gen" :: candidate.moduleName
-                                            in
-                                            case Dict.get rawModuleName candidates.imports of
-                                                Just (Just alias_) ->
-                                                    [ alias_ ]
-
-                                                _ ->
-                                                    rawModuleName
-
-                                        fullName : String
-                                        fullName =
-                                            (moduleName ++ [ "call_", candidate.valueName ])
-                                                |> String.join "."
-
-                                        ( argsFixes, lastArgEnd ) =
-                                            candidate.args
-                                                |> List.foldl
-                                                    (\argRange ( argsFixesAcc, argEndAcc ) ->
-                                                        ( Fix.replaceRangeBy
-                                                            { start = argEndAcc
-                                                            , end = argRange.start
-                                                            }
-                                                            (if argEndAcc.row /= argRange.start.row then
-                                                                "\n" ++ String.repeat argRange.start.column " " ++ "("
-
-                                                             else
-                                                                " ("
-                                                            )
-                                                            :: Fix.insertAt
-                                                                argRange.end
-                                                                ")"
-                                                            :: argsFixesAcc
-                                                        , argRange.end
-                                                        )
-                                                    )
-                                                    ( [], candidate.listRange.start )
-
-                                        combinedRange : Range
-                                        combinedRange =
-                                            Range.combine [ candidate.applyRange, candidate.valueRange ]
-                                    in
-                                    Rule.errorForModuleWithFix candidates.moduleKey
-                                        { message = "Use helpers for more readable and compact code"
-                                        , details =
-                                            [ "This usage of Elm.apply can be replaced with " ++ fullName
-                                            ]
-                                        }
-                                        combinedRange
-                                        ([ Fix.replaceRangeBy combinedRange fullName
-                                         , Fix.removeRange
-                                            { start = lastArgEnd
-                                            , end = candidate.listRange.end
-                                            }
-                                         ]
-                                            ++ argsFixes
-                                        )
-                                        |> Just
-                    )
-    in
     -- Rule.errorForModule candidates.moduleKey
     --     { message = "Tree"
     --     , details = [ treeToString genTree ]
     --     }
     --     Range.empty
     --     ::
-    valueErrors ++ callErrors
+    valueErrors genTree candidates ++ callErrors genTree candidates
+
+
+valueErrors : Tree -> Candidates -> List (Rule.Error { useErrorForModule : () })
+valueErrors genTree candidates =
+    candidates.valueCandidates
+        |> List.map
+            (\candidate ->
+                case get genTree candidate.moduleName candidate.valueName of
+                    Nothing ->
+                        Rule.errorForModule candidates.moduleKey
+                            { message = "Use helpers for more readable and compact code"
+                            , details = [ "You can use local helpers to avoid directly needing Elm.value" ]
+                            }
+                            candidate.range
+
+                    Just _ ->
+                        let
+                            ( moduleName, importFixes ) =
+                                let
+                                    rawModuleName : ModuleName
+                                    rawModuleName =
+                                        "Gen" :: candidate.moduleName
+                                in
+                                case Dict.get rawModuleName candidates.imports of
+                                    Just (Just alias_) ->
+                                        ( [ alias_ ], [] )
+
+                                    Just Nothing ->
+                                        ( rawModuleName, [] )
+
+                                    Nothing ->
+                                        ( rawModuleName
+                                        , [ Fix.insertAt candidates.importListEnd
+                                                ("import " ++ String.join "." rawModuleName ++ "\n")
+                                          ]
+                                        )
+
+                            fullName : String
+                            fullName =
+                                (moduleName ++ [ "values_", candidate.valueName ])
+                                    |> String.join "."
+                        in
+                        Rule.errorForModuleWithFix candidates.moduleKey
+                            { message = "Use helpers for more readable and compact code"
+                            , details =
+                                [ "This usage of Elm.value can be replaced with " ++ fullName
+                                ]
+                            }
+                            candidate.range
+                            (Fix.replaceRangeBy candidate.range fullName :: importFixes)
+            )
+
+
+callErrors : Tree -> Candidates -> List (Rule.Error { useErrorForModule : () })
+callErrors genTree candidates =
+    candidates.callCandidates
+        |> List.filterMap
+            (\candidate ->
+                case get genTree candidate.moduleName candidate.valueName of
+                    Nothing ->
+                        Rule.errorForModule candidates.moduleKey
+                            { message = "Use helpers for more readable and compact code"
+                            , details = [ "You can use local helpers to avoid directly needing Elm.apply" ]
+                            }
+                            (Range.combine [ candidate.applyRange, candidate.valueRange ])
+                            |> Just
+
+                    Just arity ->
+                        if List.length candidate.args /= arity then
+                            Nothing
+
+                        else
+                            let
+                                moduleName : ModuleName
+                                moduleName =
+                                    let
+                                        rawModuleName : ModuleName
+                                        rawModuleName =
+                                            "Gen" :: candidate.moduleName
+                                    in
+                                    case Dict.get rawModuleName candidates.imports of
+                                        Just (Just alias_) ->
+                                            [ alias_ ]
+
+                                        _ ->
+                                            rawModuleName
+
+                                fullName : String
+                                fullName =
+                                    (moduleName ++ [ "call_", candidate.valueName ])
+                                        |> String.join "."
+
+                                ( argsFixes, lastArgEnd ) =
+                                    candidate.args
+                                        |> List.foldl
+                                            (\argRange ( argsFixesAcc, argEndAcc ) ->
+                                                ( Fix.replaceRangeBy
+                                                    { start = argEndAcc
+                                                    , end = argRange.start
+                                                    }
+                                                    (if argEndAcc.row /= argRange.start.row then
+                                                        "\n" ++ String.repeat argRange.start.column " " ++ "("
+
+                                                     else
+                                                        " ("
+                                                    )
+                                                    :: Fix.insertAt
+                                                        argRange.end
+                                                        ")"
+                                                    :: argsFixesAcc
+                                                , argRange.end
+                                                )
+                                            )
+                                            ( [], candidate.listRange.start )
+
+                                combinedRange : Range
+                                combinedRange =
+                                    Range.combine [ candidate.applyRange, candidate.valueRange ]
+                            in
+                            Rule.errorForModuleWithFix candidates.moduleKey
+                                { message = "Use helpers for more readable and compact code"
+                                , details =
+                                    [ "This usage of Elm.apply can be replaced with " ++ fullName
+                                    ]
+                                }
+                                combinedRange
+                                ([ Fix.replaceRangeBy combinedRange fullName
+                                 , Fix.removeRange
+                                    { start = lastArgEnd
+                                    , end = candidate.listRange.end
+                                    }
+                                 ]
+                                    ++ argsFixes
+                                )
+                                |> Just
+            )
 
 
 
